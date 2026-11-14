@@ -8,8 +8,8 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { exec } = require('child_process');
-const QRCode = require('./vendor/QRCode');
-const QRErrorCorrectLevel = require('./vendor/QRCode/QRErrorCorrectLevel');
+const QRCode = require('./qrcode.js');
+const QRErrorCorrectLevel = QRCode.ErrorCorrectLevel;
 
 const PORT = Number(process.env.PORT) || 3000;
 const ROOT = __dirname;
@@ -319,9 +319,9 @@ function readBody(req) {
 }
 
 const STATIC = {
-  '/': ['public/play.html', 'text/html; charset=utf-8'],
-  '/host': ['public/host.html', 'text/html; charset=utf-8'],
-  '/style.css': ['public/style.css', 'text/css; charset=utf-8'],
+  '/': ['play.html', 'text/html; charset=utf-8'],
+  '/host': ['host.html', 'text/html; charset=utf-8'],
+  '/style.css': ['style.css', 'text/css; charset=utf-8'],
 };
 
 function csv() {

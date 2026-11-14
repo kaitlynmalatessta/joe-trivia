@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trivia — Host Screen</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  body { min-height: 100vh; }
+  .stage { min-height: 100vh; display: flex; flex-direction: column; padding: 3vh 4vw 12vh; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; font-weight: 800; font-size: clamp(14px, 1.6vw, 22px); color: var(--muted); }
+  .topbar .pill { background: var(--panel); padding: 8px 16px; border-radius: 999px; color: var(--ink); }
+
+  /* lobby */
+  .lobby { flex: 1; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 4vw; align-items: center; }
+  .brand .fifty { font-size: clamp(90px, 16vw, 230px); font-weight: 900; line-height: .85; color: var(--gold); letter-spacing: -.04em;
+    text-shadow: 0 8px 0 rgba(0,0,0,.18); }
+  .brand .t1 { font-size: clamp(28px, 4vw, 60px); font-weight: 900; margin-top: 6px; }
+  .brand .t2 { font-size: clamp(18px, 2vw, 30px); color: var(--muted); font-weight: 700; }
+  .joinbox { margin-top: 3vh; display: flex; gap: 24px; align-items: center; background: var(--panel); border-radius: 20px; padding: 18px; width: fit-content; max-width: 100%; }
+  .joinbox img { width: clamp(140px, 16vw, 230px); height: auto; border-radius: 10px; background: #fff; padding: 6px; }
+  .joinbox .lbl { font-size: clamp(14px, 1.4vw, 20px); color: var(--muted); font-weight: 700; }
+  .joinbox .url { font-size: clamp(22px, 2.8vw, 44px); font-weight: 900; word-break: break-all; }
+  .joinbox .hint { font-size: clamp(12px, 1.1vw, 16px); color: var(--muted); margin-top: 6px; max-width: 26ch; }
+  .roster h2 { margin: 0 0 12px; font-size: clamp(22px, 2.4vw, 36px); }
+  .roster h2 .n { color: var(--gold); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; max-height: 58vh; overflow: auto; align-content: flex-start; }
+  .chip { background: var(--panel-strong); color: var(--ink); padding: 8px 14px; border-radius: 999px; font-weight: 800; font-size: clamp(14px, 1.3vw, 20px); animation: pop .35s both; }
+  .chip:hover { background: var(--bad); }
+  .chip.armed { background: var(--bad); }
+  .roster .empty { color: var(--muted); font-size: clamp(16px, 1.6vw, 24px); animation: pulse 2s infinite; }
+
+  /* question */
+  .qwrap { flex: 1; display: flex; flex-direction: column; gap: 3vh; }
+  .qtext { background: #fff; color: #1d1250; border-radius: 18px; padding: 3vh 3vw; font-weight: 900; text-align: center;
+    font-size: clamp(26px, 3.6vw, 58px); line-height: 1.15; box-shadow: 0 10px 30px rgba(0,0,0,.25); animation: pop .4s both; }
+  .mid { flex: 1; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 2vw; min-height: 18vh; }
+  .timer { width: clamp(110px, 12vw, 180px); aspect-ratio: 1; position: relative; justify-self: center; }
+  .timer svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .timer .num { position: absolute; inset: 0; display: grid; place-items: center; font-size: clamp(40px, 5vw, 76px); font-weight: 900; }
+  .stat { text-align: center; font-weight: 900; }
+  .stat .big { font-size: clamp(40px, 5vw, 80px); line-height: 1; }
+  .stat .lbl { color: var(--muted); font-size: clamp(14px, 1.3vw, 20px); }
+  .getready { justify-self: center; text-align: center; font-weight: 900; font-size: clamp(26px, 3vw, 48px); }
+  .getready .bar { height: 10px; background: var(--panel); border-radius: 99px; margin-top: 14px; overflow: hidden; width: 30vw; }
+  .getready .bar i { display: block; height: 100%; background: var(--gold); width: 0; }
+  .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6vh 1.4vw; }
+  .opt { display: flex; align-items: center; gap: 18px; padding: 2.4vh 1.6vw; border-radius: var(--radius); font-weight: 800;
+    font-size: clamp(20px, 2.3vw, 38px); box-shadow: 0 6px 0 rgba(0,0,0,.25); position: relative; overflow: hidden; min-height: 11vh; animation: rise .35s both; }
+  .opt .txt { position: relative; z-index: 1; flex: 1; }
+  .opt .shape { position: relative; z-index: 1; }
+  .opt .cnt { position: relative; z-index: 1; font-size: 1.1em; font-weight: 900; }
+  .opt.dim { filter: saturate(.35) brightness(.5); }
+  .opt.right { outline: 6px solid #fff; }
+  .opt .check { position: relative; z-index: 1; font-size: 1.2em; }
+
+  /* leaderboard + final */
+  .lbwrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3vh; }
+  .lbwrap h1 { font-size: clamp(34px, 4.4vw, 70px); margin: 0; font-weight: 900; }
+  .lbwrap .board { width: min(900px, 92vw); }
+  .lbwrap { gap: 2.2vh; }
+  .lbwrap .board { gap: 1vh; }
+  .lbwrap .board li { font-size: clamp(16px, 3vh, 32px); padding: .9vh 1.6vw; }
+  .final .rest li { font-size: clamp(14px, 2.2vh, 24px); padding: .6vh 1.4vw; }
+  .final .rest { grid-template-columns: 1fr 1fr; column-gap: 1vw; }
+  .final h1 { font-size: clamp(30px, 5vh, 60px); }
+  .lbwrap:not(.final) .board li:nth-child(1) { background: rgba(247, 201, 72, .28); }
+  .podium { display: flex; align-items: flex-end; justify-content: center; gap: 2vw; margin-top: 2vh; }
+  .pod { width: clamp(140px, 17vw, 260px); text-align: center; animation: rise .7s both; }
+  .pod .who { font-weight: 900; font-size: clamp(18px, 2.1vw, 34px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pod .pts { color: var(--muted); font-weight: 800; font-size: clamp(14px, 1.4vw, 22px); margin-bottom: 8px; }
+  .pod .block { border-radius: 14px 14px 0 0; display: grid; place-items: center; font-size: clamp(44px, 6vw, 96px); font-weight: 900; color: #2a1a00; }
+  .pod.p1 .block { background: var(--gold); height: 24vh; }
+  .pod.p2 .block { background: #d9dde6; height: 17vh; }
+  .pod.p3 .block { background: #d8925a; height: 12vh; }
+  .pod .block { font-size: clamp(40px, 8vh, 96px); }
+  .pod.p1 { animation-delay: 1.2s; } .pod.p2 { animation-delay: .6s; } .pod.p3 { animation-delay: 0s; }
+  .final .rest { width: min(900px, 92vw); }
+
+  /* controls */
+  .controls { position: fixed; right: 2vw; bottom: 2.5vh; display: flex; gap: 10px; align-items: center; z-index: 20; }
+  .controls .btn { font-size: clamp(16px, 1.4vw, 22px); }
+  .menu { position: fixed; right: 2vw; bottom: calc(2.5vh + 70px); background: #2a1a5e; border: 1px solid rgba(255,255,255,.2); border-radius: 14px;
+    padding: 8px; display: grid; gap: 4px; min-width: 260px; z-index: 30; box-shadow: 0 20px 50px rgba(0,0,0,.45); }
+  .menu button, .menu a { text-align: left; background: transparent; color: var(--ink); padding: 10px 12px; border-radius: 8px; font-weight: 700; text-decoration: none; font-size: 15px; }
+  .menu button:hover, .menu a:hover { background: var(--panel-strong); }
+  .keyhint { position: fixed; left: 2vw; bottom: 2.5vh; color: var(--muted); font-size: 13px; font-weight: 700; }
+  .conn { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); background: var(--bad); padding: 8px 16px; border-radius: 999px; font-weight: 800; z-index: 60; }
+  .gate { min-height: 100vh; display: grid; place-items: center; }
+  .gate form { background: var(--panel); padding: 28px; border-radius: 18px; display: grid; gap: 12px; width: min(92vw, 360px); }
+  .gate input { font: inherit; font-size: 1.4rem; padding: 12px; border-radius: 10px; border: 0; text-align: center; }
+
+  @media (max-width: 800px) {
+    .lobby { grid-template-columns: 1fr; }
+    .opts { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="conn" class="conn hidden">Reconnecting to the game…</div>
+
+<script>
+const SHAPES = [
+  '<svg class="shape" viewBox="0 0 24 24"><path fill="#fff" d="M12 2 23 21H1z"/></svg>',
+  '<svg class="shape" viewBox="0 0 24 24"><path fill="#fff" d="M12 1 23 12 12 23 1 12z"/></svg>',
+  '<svg class="shape" viewBox="0 0 24 24"><circle fill="#fff" cx="12" cy="12" r="11"/></svg>',
+  '<svg class="shape" viewBox="0 0 24 24"><rect fill="#fff" x="2" y="2" width="20" height="20"/></svg>',
+];
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const params = new URLSearchParams(location.search);
+let KEY = params.get('key') || sessionStorage.getItem('hostKey') || '';
+let S = null;              // latest state
+let lastKey = '';          // what's rendered
+let deadline = 0, openAt = 0;
+let menuOpen = false;
+let joinUrl = location.origin, online = false;
+let armedKick = null;
+
+fetch('/info').then(r => r.json()).then(i => { joinUrl = i.joinUrl; online = !!i.online; if (S && S.phase === 'lobby') { lastKey = ''; render(); } }).catch(() => {});
+
+function connect() {
+  const es = new EventSource('/events?host=1&key=' + encodeURIComponent(KEY));
+  es.onmessage = e => { $('#conn').classList.add('hidden'); S = JSON.parse(e.data); onState(); };
+  es.onerror = () => {
+    $('#conn').classList.remove('hidden');
+    // 403 = needs the host code (only when opened from another device)
+    fetch('/events?host=1&key=' + encodeURIComponent(KEY), { method: 'HEAD' }).then(r => {
+      if (r.status === 403) { es.close(); $('#conn').classList.add('hidden'); gate(); }
+    }).catch(() => {});
+  };
+}
+
+function gate() {
+  $('#app').innerHTML = `<div class="gate"><form id="gf"><h2 style="margin:0">Host code</h2>
+    <p class="muted" style="margin:0">It's shown in the black window on the laptop running the game.</p>
+    <input id="gk" inputmode="numeric" autocomplete="off" autofocus><button class="btn">Open host screen</button></form></div>`;
+  $('#gf').onsubmit = e => { e.preventDefault(); KEY = $('#gk').value.trim(); sessionStorage.setItem('hostKey', KEY); connect(); };
+}
+
+async function act(action, extra = {}) {
+  try {
+    const r = await fetch('/api/host', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, key: KEY, ...extra }) });
+    if (r.status === 403) gate();
+  } catch (_) {}
+}
+
+function onState() {
+  const now = performance.now();
+  if (S.phase === 'question') { deadline = now + S.remainingMs; openAt = now + S.openInMs; }
+  const key = S.phase + ':' + S.qIndex;
+  if (key !== lastKey) { lastKey = key; render(); } else update();
+}
+
+function topbar() {
+  if (!S.question) return '';
+  return `<div class="topbar"><span>${esc(S.question.round || '')}</span><span class="pill">Question ${S.qIndex + 1} of ${S.total}</span></div>`;
+}
+
+function render() {
+  const app = $('#app');
+  const ph = S.phase;
+  let html = '<div class="stage">';
+  if (ph === 'lobby') {
+    const t = String(S.title || '');
+    const m = t.match(/\d+/);
+    html += `<div class="lobby">
+      <div class="brand">
+        ${m ? `<div class="fifty">${esc(m[0])}</div><div class="t1">${esc(t.replace(m[0], '').trim())}</div>` : `<div class="t1">${esc(t)}</div>`}
+        <div class="t2">${esc(S.subtitle || '')}</div>
+        <div class="joinbox">
+          <img src="/qr.svg?v=${encodeURIComponent(joinUrl)}" alt="QR code to join">
+          <div><div class="lbl">Scan or go to</div><div class="url">${esc(joinUrl.replace(/^https?:\/\//, ''))}</div>
+          <div class="hint">${online ? 'Works on Wi-Fi or cell data. Pick a nickname to join.' : 'Be on the same Wi-Fi as this laptop, then pick a nickname.'}</div></div>
+        </div>
+      </div>
+      <div class="roster"><h2><span class="n" id="pc">0</span> players</h2><div class="chips" id="chips"></div></div>
+    </div>`;
+  } else if (ph === 'question' || ph === 'reveal') {
+    html += topbar() + `<div class="qwrap">
+      <div class="qtext">${esc(S.question.text)}</div>
+      <div class="mid" id="mid"></div>
+      <div class="opts" id="opts"></div>
+    </div>`;
+  } else if (ph === 'leaderboard') {
+    html += topbar() + `<div class="lbwrap"><h1>Leaderboard</h1><ol class="board" id="board"></ol></div>`;
+  } else if (ph === 'final') {
+    html += `<div class="lbwrap final"><h1>🎉 Final Results 🎉</h1><div class="podium" id="podium"></div><ol class="board rest" id="board"></ol></div>`;
+  }
+  html += '</div>';
+  html += `<div class="controls"><button class="btn ghost" id="menuBtn" aria-label="More options">⋯</button><button class="btn" id="next"></button></div>
+           <div class="keyhint">Space = next</div>`;
+  app.innerHTML = html;
+  $('#next').onclick = () => act('next');
+  $('#menuBtn').onclick = toggleMenu;
+  if (ph === 'final') confetti();
+  update();
+}
+
+function nextLabel() {
+  switch (S.phase) {
+    case 'lobby': return S.playerCount ? 'Start game ▶' : 'Waiting for players…';
+    case 'question': return 'Show answer ▶';
+    case 'reveal': return 'Leaderboard ▶';
+    case 'leaderboard': return S.qIndex + 1 < S.total ? 'Next question ▶' : 'Final results 🏆';
+    case 'final': return 'Game over';
+  }
+}
+
+function update() {
+  const nb = $('#next');
+  if (nb) { nb.textContent = nextLabel(); nb.disabled = S.phase === 'final' || (S.phase === 'lobby' && !S.playerCount); }
+  if (S.phase === 'lobby') {
+    $('#pc').textContent = S.playerCount;
+    const chips = $('#chips');
+    const ids = S.players.map(p => p.id).join(',');
+    if (chips.dataset.ids !== ids) {
+      chips.dataset.ids = ids;
+      chips.innerHTML = S.players.length ? S.players.slice().reverse().map(p =>
+        `<button class="chip" data-id="${esc(p.id)}" title="Click twice to remove">${esc(p.name)}</button>`).join('')
+        : '<div class="empty">Waiting for guests to join…</div>';
+      chips.querySelectorAll('.chip').forEach(c => c.onclick = () => {
+        if (armedKick === c.dataset.id) { act('kick', { id: c.dataset.id }); armedKick = null; }
+        else { armedKick = c.dataset.id; chips.querySelectorAll('.chip').forEach(x => x.classList.toggle('armed', x === c)); c.textContent = 'Remove ' + c.textContent + '?'; }
+      });
+    }
+  }
+  if (S.phase === 'question' || S.phase === 'reveal') renderQuestion();
+  if (S.phase === 'leaderboard') renderBoard(S.top);
+  if (S.phase === 'final') renderFinal();
+}
+
+function renderQuestion() {
+  const opts = $('#opts'), mid = $('#mid');
+  const reveal = S.phase === 'reveal';
+  const reading = S.phase === 'question' && performance.now() < openAt;
+  const total = Math.max(1, S.counts ? S.counts.reduce((a, b) => a + b, 0) : 1);
+  if (reading) {
+    if (!mid.querySelector('.getready')) {
+      mid.innerHTML = `<div></div><div class="getready">Get ready…<div class="bar"><i id="grbar"></i></div></div><div></div>`;
+      opts.innerHTML = '';
+    }
+    return;
+  }
+  if (!opts.children.length || opts.dataset.mode !== S.phase) {
+    opts.dataset.mode = S.phase;
+    opts.innerHTML = S.question.options.map((o, i) => `<div class="opt c${i}" data-i="${i}">${SHAPES[i]}<span class="txt">${esc(o)}</span>${reveal ? `<span class="check">${i === S.correct ? '✔' : ''}</span><span class="cnt">${S.counts[i]}</span>` : ''}</div>`).join('');
+    if (reveal) opts.querySelectorAll('.opt').forEach(el => {
+      const i = +el.dataset.i;
+      el.classList.toggle('right', i === S.correct);
+      el.classList.toggle('dim', i !== S.correct);
+    });
+  }
+  if (S.phase === 'question') {
+    if (!mid.querySelector('.timer')) {
+      mid.innerHTML = `<div></div>
+        <div class="timer"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="rgba(255,255,255,.12)"/>
+        <circle id="arc" cx="50" cy="50" r="44" fill="none" stroke="var(--gold)" stroke-width="9" stroke-linecap="round" stroke-dasharray="276.5" stroke-dashoffset="0"/></svg>
+        <div class="num" id="tnum"></div></div>
+        <div class="stat"><div class="big" id="ans">0</div><div class="lbl">answers</div></div>`;
+    }
+    $('#ans').textContent = `${S.answered}/${S.playerCount}`;
+  } else {
+    const right = S.counts[S.correct] || 0;
+    mid.innerHTML = `<div></div><div class="stat"><div class="big">${Math.round(100 * right / total)}%</div><div class="lbl">got it right</div></div><div></div>`;
+  }
+}
+
+function boardRows(list) {
+  return list.map((p, i) => `<li style="animation-delay:${i * 60}ms"><span class="rk">${p.rank}</span><span class="nm">${esc(p.name)}${p.streak >= 3 ? `<span class="fire">🔥${p.streak}</span>` : ''}</span><span class="sc">${p.score.toLocaleString()}</span></li>`).join('');
+}
+function renderBoard(list) {
+  const b = $('#board'), html = boardRows(list || []);
+  if (b.dataset.h !== html) { b.dataset.h = html; b.innerHTML = html || '<li><span></span><span class="nm muted">No players yet</span><span></span></li>'; }
+}
+function renderFinal() {
+  const top = S.top || [];
+  const pod = $('#podium');
+  if (!pod.dataset.done) {
+    pod.dataset.done = 1;
+    const order = [1, 0, 2];
+    pod.innerHTML = order.filter(i => top[i]).map(i => `<div class="pod p${i + 1}"><div class="who">${esc(top[i].name)}</div><div class="pts">${top[i].score.toLocaleString()} pts</div><div class="block">${top[i].rank}</div></div>`).join('');
+  }
+  renderBoard(top.slice(3));
+}
+
+function tick() {
+  if (S && S.phase === 'question') {
+    const now = performance.now();
+    if (now < openAt) {
+      const g = $('#grbar'); if (g) g.style.width = (100 * (1 - (openAt - now) / 3000)) + '%';
+    } else {
+      if ($('.getready')) renderQuestion();
+      const left = Math.max(0, deadline - now);
+      const n = $('#tnum'), arc = $('#arc');
+      if (n) n.textContent = Math.ceil(left / 1000);
+      if (arc) arc.setAttribute('stroke-dashoffset', String(276.5 * (1 - left / S.limitMs)));
+    }
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+function toggleMenu() {
+  menuOpen = !menuOpen;
+  const old = $('.menu'); if (old) old.remove();
+  if (!menuOpen) return;
+  const m = document.createElement('div');
+  m.className = 'menu';
+  m.innerHTML = `
+    <button data-a="fs">⛶ Full screen</button>
+    <a href="/results.csv?key=${encodeURIComponent(KEY)}">⬇ Download scores (spreadsheet)</a>
+    <button data-a="final">🏆 Skip to final results</button>
+    <button data-a="restart">↺ Play again (same players, scores to 0)</button>
+    <button data-a="reset">✖ New game (everyone re-joins)</button>`;
+  document.body.appendChild(m);
+  m.onclick = e => {
+    const a = e.target.closest('[data-a]'); if (!a) return;
+    menuOpen = false; m.remove();
+    const what = a.dataset.a;
+    if (what === 'fs') { (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => {}); return; }
+    const text = { final: ['Skip to final results?', 'The game ends now and the podium is shown.'],
+                   restart: ['Play again?', 'Everyone stays joined, but all scores go back to zero.'],
+                   reset: ['Start a brand-new game?', 'All players and scores are cleared. Everyone will need to join again.'] }[what];
+    confirmBox(text[0], text[1], () => act(what));
+  };
+}
+
+function confirmBox(title, body, yes) {
+  const d = document.createElement('div');
+  d.className = 'dialog-backdrop';
+  d.innerHTML = `<div class="dialog"><h3>${esc(title)}</h3><p>${esc(body)}</p><div class="row"><button class="btn ghost" data-n>Cancel</button><button class="btn" data-y>Yes</button></div></div>`;
+  document.body.appendChild(d);
+  d.querySelector('[data-n]').onclick = () => d.remove();
+  d.querySelector('[data-y]').onclick = () => { d.remove(); yes(); };
+}
+
+function confetti() {
+  const box = document.createElement('div'); box.className = 'confetti';
+  const colors = ['#f7c948', '#e21b3c', '#1368ce', '#26890c', '#ffffff', '#d89e00'];
+  for (let i = 0; i < 160; i++) {
+    const c = document.createElement('i');
+    c.style.left = Math.random() * 100 + 'vw';
+    c.style.background = colors[i % colors.length];
+    c.style.animationDuration = 3 + Math.random() * 3 + 's';
+    c.style.animationDelay = Math.random() * 2.5 + 's';
+    box.appendChild(c);
+  }
+  document.body.appendChild(box);
+  setTimeout(() => box.remove(), 9000);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || $('.dialog-backdrop')) return;
+  if (e.code === 'Space' || e.code === 'ArrowRight') { e.preventDefault(); const b = $('#next'); if (b && !b.disabled) act('next'); }
+});
+document.addEventListener('click', e => { if (menuOpen && !e.target.closest('.menu') && !e.target.closest('#menuBtn')) { menuOpen = false; const m = $('.menu'); if (m) m.remove(); } });
+
+connect();
+</script>
+</body>
+</html>

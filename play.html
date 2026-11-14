@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#1d1250">
+<title>Trivia — Play</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  body { min-height: 100dvh; }
+  .screen { min-height: 100dvh; display: flex; flex-direction: column; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto; }
+  .head { display: flex; justify-content: space-between; align-items: center; font-weight: 800; font-size: 14px; color: var(--muted); min-height: 28px; }
+  .head .me { color: var(--ink); background: var(--panel); padding: 6px 12px; border-radius: 999px; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .center { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; gap: 14px; }
+  .fifty { font-size: 110px; font-weight: 900; color: var(--gold); line-height: .85; letter-spacing: -.04em; }
+  h1 { margin: 0; font-size: 30px; font-weight: 900; }
+  h2 { margin: 0; font-size: 24px; font-weight: 900; }
+  .sub { color: var(--muted); font-weight: 700; }
+  form.join { width: 100%; display: grid; gap: 12px; margin-top: 18px; }
+  form.join input { font: inherit; font-size: 22px; font-weight: 800; padding: 16px; border-radius: 14px; border: 0; text-align: center; width: 100%; }
+  .err { color: #ffb4b4; font-weight: 700; min-height: 1.2em; }
+  .q { background: #fff; color: #1d1250; border-radius: 14px; padding: 16px; font-weight: 900; font-size: 20px; line-height: 1.2; text-align: center; margin: 12px 0; animation: pop .35s both; }
+  .tbar { height: 8px; background: var(--panel); border-radius: 99px; overflow: hidden; }
+  .tbar i { display: block; height: 100%; background: var(--gold); width: 100%; transform-origin: left; }
+  .answers { flex: 1; display: grid; grid-template-rows: repeat(var(--n, 4), 1fr); gap: 10px; margin-top: 12px; }
+  .ans { display: flex; align-items: center; gap: 14px; text-align: left; color: #fff; font-weight: 800; font-size: 19px; line-height: 1.15; padding: 14px 16px; border-radius: 14px;
+    box-shadow: 0 5px 0 rgba(0,0,0,.28); min-height: 64px; animation: rise .3s both; -webkit-tap-highlight-color: transparent; }
+  .ans:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,.28); }
+  .badge { width: 120px; height: 120px; border-radius: 50%; display: grid; place-items: center; font-size: 64px; font-weight: 900; animation: pop .45s both; }
+  .badge.good { background: var(--good); }
+  .badge.bad { background: var(--bad); }
+  .badge.wait { background: var(--panel-strong); font-size: 48px; animation: pulse 1.4s infinite; }
+  .pts { font-size: 34px; font-weight: 900; }
+  .card { background: var(--panel); border-radius: 14px; padding: 14px 16px; width: 100%; font-weight: 700; }
+  .card .row { display: flex; justify-content: space-between; gap: 8px; }
+  .card .row b { font-size: 22px; }
+  .correct-was { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px; font-weight: 800; width: 100%; text-align: left; }
+  .lb { width: 100%; margin-top: 12px; }
+  .lb .board li, .board li { padding: 9px 14px; font-size: 16px; text-align: left; }
+  .gap { color: var(--muted); font-weight: 700; font-size: 15px; }
+  .conn { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); background: var(--bad); padding: 6px 14px; border-radius: 999px; font-weight: 800; font-size: 13px; z-index: 60; }
+  .place { font-size: 72px; font-weight: 900; color: var(--gold); line-height: 1; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="conn" class="conn hidden">Reconnecting…</div>
+<script>
+const SHAPES = [
+  '<svg class="shape" viewBox="0 0 24 24"><path fill="#fff" d="M12 2 23 21H1z"/></svg>',
+  '<svg class="shape" viewBox="0 0 24 24"><path fill="#fff" d="M12 1 23 12 12 23 1 12z"/></svg>',
+  '<svg class="shape" viewBox="0 0 24 24"><circle fill="#fff" cx="12" cy="12" r="11"/></svg>',
+  '<svg class="shape" viewBox="0 0 24 24"><rect fill="#fff" x="2" y="2" width="20" height="20"/></svg>',
+];
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (_) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (_) {} },
+  del(k) { try { localStorage.removeItem(k); } catch (_) {} },
+};
+
+let pid = store.get('triviaPid') || '';
+let S = null, es = null, lastKey = '', deadline = 0, openAt = 0, picked = null, pickedFor = -2, joining = false;
+
+function connect() {
+  if (es) es.close();
+  es = new EventSource('/events?pid=' + encodeURIComponent(pid));
+  es.onmessage = e => { $('#conn').classList.add('hidden'); S = JSON.parse(e.data); onState(); };
+  es.onerror = () => $('#conn').classList.remove('hidden');
+}
+
+function onState() {
+  const now = performance.now();
+  if (S.phase === 'question') { deadline = now + S.remainingMs; openAt = now + S.openInMs; }
+  if (!S.you) {                         // not joined (or host started a new game)
+    if (pid) { pid = ''; store.del('triviaPid'); connect(); }
+    if (lastKey !== 'join') { lastKey = 'join'; renderJoin(); }
+    return;
+  }
+  if (S.qIndex !== pickedFor) { picked = null; pickedFor = S.qIndex; }
+  if (S.you.answer && S.you.answer.choice !== null && S.you.answer.choice !== undefined) picked = S.you.answer.choice;
+  const reading = S.phase === 'question' && now < openAt;
+  const answered = S.phase === 'question' && picked !== null;
+  const key = [S.phase, S.qIndex, reading ? 'r' : '', answered ? 'a' : ''].join(':');
+  if (key !== lastKey) { lastKey = key; render(); } else update();
+}
+
+function head() {
+  const left = S.question && S.phase !== 'final' ? `Q${S.qIndex + 1} of ${S.total}` : esc(S.title || '');
+  return `<div class="head"><span>${left}</span><span class="me">${esc(S.you.name)} · ${S.you.score.toLocaleString()}</span></div>`;
+}
+
+function renderJoin(msg = '') {
+  const t = S ? String(S.title || '') : '';
+  const m = t.match(/\d+/);
+  $('#app').innerHTML = `<div class="screen"><div class="center">
+    ${m ? `<div class="fifty">${esc(m[0])}</div><h1>${esc(t.replace(m[0], '').trim())}</h1>` : `<h1>${esc(t || 'Trivia')}</h1>`}
+    <div class="sub">${esc(S && S.subtitle || '')}</div>
+    <form class="join" id="jf">
+      <input id="nm" maxlength="16" placeholder="Your nickname" autocomplete="off" autocapitalize="words" enterkeyhint="go" value="${esc(store.get('triviaName') || '')}">
+      <button class="btn">Join game</button>
+      <div class="err" id="err">${esc(msg)}</div>
+    </form></div></div>`;
+  $('#jf').onsubmit = async e => {
+    e.preventDefault();
+    if (joining) return;
+    const name = $('#nm').value.trim();
+    if (!name) { $('#err').textContent = 'Type a nickname first.'; return; }
+    joining = true;
+    try {
+      const r = await fetch('/api/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      const d = await r.json();
+      if (!r.ok) { $('#err').textContent = d.error || 'Could not join.'; return; }
+      pid = d.pid; store.set('triviaPid', pid); store.set('triviaName', name);
+      lastKey = ''; picked = null; connect();
+    } catch (_) { $('#err').textContent = 'Can’t reach the game. Are you on the party Wi-Fi?'; }
+    finally { joining = false; }
+  };
+}
+
+function render() {
+  const app = $('#app'); const y = S.you; const ph = S.phase;
+  let h = '<div class="screen">' + head();
+  if (ph === 'lobby') {
+    h += `<div class="center"><div class="badge good">✓</div><h1>You're in!</h1>
+      <div class="sub">Look up at the big screen — the game starts soon.</div>
+      <div class="card"><div class="row"><span>Players joined</span><b id="pc">${S.playerCount}</b></div></div></div>`;
+  } else if (ph === 'question') {
+    const reading = performance.now() < openAt;
+    h += `<div class="q">${esc(S.question.text)}</div><div class="tbar"><i id="tb"></i></div>`;
+    if (reading) {
+      h += `<div class="center"><div class="badge wait">⏳</div><h2>Get ready…</h2></div>`;
+    } else if (picked !== null) {
+      h += `<div class="center"><div class="badge wait">🔒</div><h2>Answer locked in</h2>
+        <div class="correct-was c${picked}">${SHAPES[picked]}<span>${esc(S.question.options[picked])}</span></div>
+        <div class="sub" id="wa">Waiting for everyone…</div></div>`;
+    } else {
+      h += `<div class="answers" style="--n:${S.question.options.length}">` +
+        S.question.options.map((o, i) => `<button class="ans c${i}" data-i="${i}">${SHAPES[i]}<span>${esc(o)}</span></button>`).join('') + '</div>';
+    }
+  } else if (ph === 'reveal') {
+    const a = y.answer || {};
+    const c = S.correct;
+    const none = a.choice === null || a.choice === undefined;
+    h += `<div class="center">
+      <div class="badge ${a.correct ? 'good' : 'bad'}">${a.correct ? '✓' : none ? '⏱' : '✗'}</div>
+      <h1>${a.correct ? 'Correct!' : none ? 'Time’s up!' : 'Not quite!'}</h1>
+      ${a.correct ? `<div class="pts">+${(a.points || 0).toLocaleString()}</div>` : ''}
+      ${a.correct && y.streak >= 2 ? `<div class="sub">🔥 ${y.streak} in a row!</div>` : ''}
+      ${a.correct ? '' : `<div class="sub">The answer was</div><div class="correct-was c${c}">${SHAPES[c]}<span>${esc(S.question.options[c])}</span></div>`}
+      ${standing()}
+    </div>`;
+  } else if (ph === 'leaderboard') {
+    h += `<div class="center" style="justify-content:flex-start"><h2 style="margin-top:8px">Leaderboard</h2>${standing()}<div class="lb"><ol class="board" id="board">${rows()}</ol></div>${youBelow()}</div>`;
+  } else if (ph === 'final') {
+    h += `<div class="center" style="justify-content:flex-start;padding-top:10px">
+      <div class="sub">You finished</div><div class="place">${ordinal(y.rank)}</div>
+      <div class="pts">${y.score.toLocaleString()} pts</div>
+      <div class="lb"><ol class="board">${rows()}</ol></div>${youBelow()}
+      <div class="sub" style="margin-top:8px">Thanks for playing! 🎉</div></div>`;
+    if (y.rank <= 3) setTimeout(confetti, 300);
+  }
+  h += '</div>';
+  app.innerHTML = h;
+  app.querySelectorAll('.ans').forEach(b => b.onclick = () => choose(+b.dataset.i));
+}
+
+function standing() {
+  const y = S.you;
+  return `<div class="card"><div class="row"><span>Score</span><b>${y.score.toLocaleString()}</b></div>
+    <div class="row"><span>Place</span><b>${ordinal(y.rank)} of ${S.playerCount}</b></div>
+    ${y.behind ? `<div class="gap">${y.behind.gap.toLocaleString()} pts behind ${esc(y.behind.name)}</div>` : y.rank === 1 && y.score > 0 ? '<div class="gap">👑 You’re in the lead!</div>' : ''}</div>`;
+}
+function rows() {
+  return (S.top || []).map((p, i) => `<li class="${p.name === S.you.name ? 'me' : ''}" style="animation-delay:${i * 50}ms"><span class="rk">${p.rank}</span><span class="nm">${esc(p.name)}${p.streak >= 3 ? `<span class="fire">🔥${p.streak}</span>` : ''}</span><span class="sc">${p.score.toLocaleString()}</span></li>`).join('');
+}
+function youBelow() {
+  const inTop = (S.top || []).some(p => p.name === S.you.name);
+  return inTop ? '' : `<ol class="board" style="width:100%;margin-top:8px"><li class="me"><span class="rk">${S.you.rank}</span><span class="nm">${esc(S.you.name)}</span><span class="sc">${S.you.score.toLocaleString()}</span></li></ol>`;
+}
+function ordinal(n) { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
+
+function update() {
+  const pc = $('#pc'); if (pc) pc.textContent = S.playerCount;
+}
+
+async function choose(i) {
+  if (picked !== null) return;
+  picked = i;
+  if (navigator.vibrate) try { navigator.vibrate(30); } catch (_) {}
+  lastKey = ''; render();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const r = await fetch('/api/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid, choice: i }) });
+      if (r.ok) return;
+      const d = await r.json().catch(() => ({}));
+      if (r.status === 409) { const w = $('#wa'); if (w) w.textContent = d.error || 'Too late!'; return; }
+      if (r.status === 404) { pid = ''; store.del('triviaPid'); connect(); return; }
+    } catch (_) { await new Promise(res => setTimeout(res, 400)); }
+  }
+}
+
+function tick() {
+  if (S && S.you && S.phase === 'question') {
+    const now = performance.now();
+    if (now >= openAt && lastKey.split(':')[2] === 'r') onState();
+    const tb = $('#tb');
+    if (tb) tb.style.transform = `scaleX(${now < openAt ? 1 : Math.max(0, (deadline - now) / S.limitMs)})`;
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+function confetti() {
+  const box = document.createElement('div'); box.className = 'confetti';
+  const colors = ['#f7c948', '#e21b3c', '#1368ce', '#26890c', '#ffffff'];
+  for (let i = 0; i < 90; i++) {
+    const c = document.createElement('i');
+    c.style.left = Math.random() * 100 + 'vw'; c.style.background = colors[i % colors.length];
+    c.style.animationDuration = 2.5 + Math.random() * 2.5 + 's'; c.style.animationDelay = Math.random() * 1.5 + 's';
+    box.appendChild(c);
+  }
+  document.body.appendChild(box); setTimeout(() => box.remove(), 7000);
+}
+
+renderJoin();
+connect();
+</script>
+</body>
+</html>

@@ -80,9 +80,10 @@ A. Upload the files to GitHub (free)
    2. Click the "+" (top right) > "New repository". Name it joe-trivia,
       leave it Public, tick "Add a README file", click "Create repository".
    3. Click "Add file" > "Upload files". Open the unzipped
-      "Joe 50th Trivia" folder, select EVERYTHING inside it (Cmd+A), and drag
-      it all onto the page. Make sure the "public" and "vendor" folders come
-      along. Click "Commit changes".
+      "Joe 50th Trivia" folder, select ALL 10 files inside it (Cmd+A), and
+      drag them onto the page. Click "Commit changes".
+      The repository must show these files: server.js, package.json,
+      questions.json, play.html, host.html, style.css, qrcode.js.
 
 B. Put it online with Render (free)
    1. Go to render.com and sign up with "GitHub".
