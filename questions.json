@@ -1,0 +1,102 @@
+{
+  "title": "50 Years of Joe",
+  "subtitle": "The Ultimate Pop Quiz",
+  "secondsPerQuestion": 20,
+  "questions": [
+    {
+      "round": "Round 1: High School & Sports",
+      "question": "In which Southern California town did Joe grow up?",
+      "options": ["La Verne", "Glendora", "Claremont", "San Dimas"],
+      "correct": 1
+    },
+    {
+      "round": "Round 1: High School & Sports",
+      "question": "Before trading the baseball diamond for the pool, what sport did Joe play?",
+      "options": ["Basketball", "Soccer", "Football", "Baseball"],
+      "correct": 3
+    },
+    {
+      "round": "Round 1: High School & Sports",
+      "question": "Which high school did Joe attend?",
+      "options": ["Damien High School", "Glendora High School", "Bonita High School", "Bishop Amat High School"],
+      "correct": 0
+    },
+    {
+      "round": "Round 1: High School & Sports",
+      "question": "What position did Joe play in water polo?",
+      "options": ["Goalie", "Driver", "Set / Set Defense", "Wing"],
+      "correct": 2
+    },
+    {
+      "round": "Round 1: High School & Sports",
+      "question": "Where was Joe's favorite place to eat on game days?",
+      "options": ["In-N-Out Burger", "Pizza N Stuff", "Taco Bell", "The Hat"],
+      "correct": 1
+    },
+    {
+      "round": "Round 2: College Years",
+      "question": "Where did Joe attend college?",
+      "options": ["Cal Poly Pomona", "University of La Verne", "Cal State San Bernardino", "University of Redlands"],
+      "correct": 3
+    },
+    {
+      "round": "Round 2: College Years",
+      "question": "Which fraternity did Joe belong to?",
+      "options": ["Kappa Sigma Sigma", "Pi Chi", "Kappa Sigma", "Alpha Gamma Nu"],
+      "correct": 0
+    },
+    {
+      "round": "Round 2: College Years",
+      "question": "What did Joe study in college?",
+      "options": [
+        "Chemistry with an emphasis in Biochemistry",
+        "Kinesiology with an emphasis in Sports Medicine",
+        "Biology with an emphasis in Environmental Science",
+        "Environmental Studies with an emphasis in Geology"
+      ],
+      "correct": 2
+    },
+    {
+      "round": "Round 2: College Years",
+      "question": "Which of these things did Joe actually do during his fraternity days?",
+      "options": ["Camped overnight on campus", "Hiked to the R", "Streaked the quad", "Entered a fraternity talent contest"],
+      "correct": 1
+    },
+    {
+      "round": "Round 2: College Years",
+      "question": "What year of college were Joe and Rachel in when they met?",
+      "options": ["Sophomore year", "Junior year", "Senior year", "Freshman year"],
+      "correct": 3
+    },
+    {
+      "round": "Round 3: The Legend Continues",
+      "question": "Where can you usually find Joe volunteering on Sundays?",
+      "options": ["Children's Ministry", "Parking Ministry", "Youth Ministry", "Hospitality Team"],
+      "correct": 0
+    },
+    {
+      "round": "Round 3: The Legend Continues",
+      "question": "Before Fontana, Joe worked and coached water polo in which school district?",
+      "options": ["Redlands", "Colton", "Yucaipa", "Rialto"],
+      "correct": 2
+    },
+    {
+      "round": "Round 3: The Legend Continues",
+      "question": "How many years has Joe worked at Fontana High School?",
+      "options": ["13 years", "15 years", "17 years", "20 years"],
+      "correct": 1
+    },
+    {
+      "round": "Round 3: The Legend Continues",
+      "question": "What is one of Joe's biggest pet peeves?",
+      "options": ["People who show up early", "Leaving lights on", "People talking during movies", "Stupidity"],
+      "correct": 3
+    },
+    {
+      "round": "Round 3: The Legend Continues",
+      "question": "If Joe could relive one chapter of his first 50 years, which would it be?",
+      "options": ["His childhood, ages 0-10", "His 30s", "His teens and early 20s", "His 40s"],
+      "correct": 2
+    }
+  ]
+}

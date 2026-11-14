@@ -1,0 +1,9 @@
+{
+  "name": "joe-50th-trivia",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Kahoot-style party trivia with a live leaderboard",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}

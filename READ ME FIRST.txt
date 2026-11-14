@@ -1,0 +1,111 @@
+50 YEARS OF JOE — PARTY TRIVIA
+==============================
+
+Guests play on their own phones. No apps, no accounts, no Claude needed.
+Up to 150 players. The leaderboard shows on the TV and on every phone.
+
+
+ONE-TIME SETUP (do this a few days before the party)
+----------------------------------------------------
+1. Install Node.js (free) on the laptop that will run the game:
+   https://nodejs.org  ->  download the "LTS" version and install it.
+2. Unzip this folder somewhere easy, like the Desktop.
+
+
+AT THE PARTY
+------------
+1. Connect the laptop to the party Wi-Fi and plug it into the TV.
+2. Start the game:
+     Mac:     double-click "Start Trivia (Mac).command"
+              (If the Mac says it can't be opened: right-click it > Open > Open.)
+     Windows: double-click "Start Trivia (Windows).bat"
+   A black window opens and the host screen opens in your browser.
+   Leave the black window open the whole time.
+3. If the computer asks whether to allow incoming network connections, click ALLOW.
+   (Windows: tick "Private networks" and click Allow.)
+4. Guests connect to the SAME Wi-Fi, then scan the QR code on the TV
+   (or type the address shown) and pick a nickname.
+5. Press "Start game" (or the Space bar). Keep pressing Space to move on:
+   question -> show answer -> leaderboard -> next question ... -> final podium.
+
+How scoring works: a right answer is worth up to 1,000 points (faster = more),
+plus a bonus for answering several in a row correctly. Wrong or no answer = 0.
+Each question gives 3 seconds to read, then 20 seconds to answer. It reveals
+early once everyone has answered.
+
+
+HANDY HOST TRICKS
+-----------------
+- Lobby: click a player's name twice to remove them (for silly nicknames).
+- The "..." button: full screen, download everyone's scores as a spreadsheet,
+  skip to the final results, play again, or start a brand-new game.
+- If a guest's phone locks or they close the page, they just reopen the link and
+  they're right back in with their score.
+- If the laptop restarts, start the game again: scores are saved and it picks up
+  on the leaderboard.
+- Want to run it from your phone instead of the laptop keyboard? Open
+  the guest address + /host on your phone (for example 192.168.1.20:3000/host)
+  and type the 4-digit host code shown in the black window.
+
+
+DO A TEST RUN FIRST!
+--------------------
+Before the party, start it at home and join from 2 or 3 phones on your Wi-Fi.
+
+If phones can't connect:
+- Make sure the phones are on the same Wi-Fi as the laptop (not cellular data).
+- Some venue/guest Wi-Fi networks block devices from talking to each other.
+  Fix: turn on your phone's Personal Hotspot, connect the laptop AND the guests
+  to it, then restart the game (the address will change). Most hotspots handle
+  about 10 devices though, so for a big crowd use real Wi-Fi or a travel router.
+- The black window may list a second address to try.
+
+
+CHANGING QUESTIONS
+------------------
+Open questions.json in any text editor (TextEdit / Notepad).
+- "correct" is the position of the right answer, COUNTING FROM 0:
+    0 = first option, 1 = second, 2 = third, 3 = fourth.
+- "secondsPerQuestion" sets the timer.
+Save the file and restart the game.
+
+
+OPTION 2: PUT THE GAME ONLINE (guests can use cell data, no Wi-Fi needed)
+-------------------------------------------------------------------------
+This puts the game on a free website, so anyone with internet can join and
+the laptop just shows the host screen. Takes about 15 minutes, once.
+
+A. Upload the files to GitHub (free)
+   1. Make a free account at github.com.
+   2. Click the "+" (top right) > "New repository". Name it joe-trivia,
+      leave it Public, tick "Add a README file", click "Create repository".
+   3. Click "Add file" > "Upload files". Open the unzipped
+      "Joe 50th Trivia" folder, select EVERYTHING inside it (Cmd+A), and drag
+      it all onto the page. Make sure the "public" and "vendor" folders come
+      along. Click "Commit changes".
+
+B. Put it online with Render (free)
+   1. Go to render.com and sign up with "GitHub".
+   2. Click "New +" > "Web Service" and pick your joe-trivia repository.
+   3. Fill in:
+        Language / Runtime:  Node
+        Build Command:       npm install
+        Start Command:       node server.js
+        Instance Type:       Free
+   4. Under "Environment Variables" add:  HOST_KEY  =  any 4 numbers you'll
+      remember (this is your host code).
+   5. Click "Create Web Service" and wait until it says "Live".
+      Your game's address appears at the top, like
+      https://joe-trivia-abcd.onrender.com
+
+C. At the party
+   - On the laptop connected to the TV, open  YOUR-ADDRESS/host  and type your
+     host code. The QR code on screen now points to the online game.
+   - Guests scan the QR code from anywhere: Wi-Fi or cell data.
+   - Do NOT double-click the Start Trivia file when playing online.
+
+Good to know about the free plan:
+   - The site falls asleep after 15 minutes with no visitors and takes about a
+     minute to wake up. Open the host page about 5 minutes before you play.
+   - If the site restarts, scores are wiped, so download the scores
+     (the "..." button) right after the final results if you want to keep them.
