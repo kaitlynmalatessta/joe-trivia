@@ -11,7 +11,7 @@
     },
     {
       "round": "Round 1: High School & Sports",
-      "question": "Before trading the baseball diamond for the pool, what sport did Joe play?",
+      "question": "What sport did Joe play before finding waterpolo?",
       "options": ["Basketball", "Soccer", "Football", "Baseball"],
       "correct": 3
     },
