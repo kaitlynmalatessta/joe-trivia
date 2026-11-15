@@ -34,6 +34,22 @@ Each question gives 3 seconds to read, then 20 seconds to answer. It reveals
 early once everyone has answered.
 
 
+ALL-NIGHT MODE (play any time during the party)
+-----------------------------------------------
+Instead of everyone playing together, guests can play on their own whenever
+they like, and you reveal the winners later.
+1. On the host screen (lobby), click "All-night mode" and confirm.
+2. Leave the QR code up somewhere (or text the link around). Guests join,
+   then tap through the 15 questions at their own pace. The 20-second clock
+   only runs while a question is showing, so they can take breaks.
+3. Nobody sees scores or correct answers until the reveal. The host screen
+   shows who has joined and how far along everyone is.
+4. When it's time, click "Reveal results". The podium shows on the TV, and
+   every phone shows their place plus a "See the answers" list.
+Keep the host screen open in a browser tab all night: when the game is online,
+that stops the free site from going to sleep.
+
+
 HANDY HOST TRICKS
 -----------------
 - Lobby: click a player's name twice to remove them (for silly nicknames).
@@ -63,7 +79,12 @@ If phones can't connect:
 
 CHANGING QUESTIONS
 ------------------
-Open questions.json in any text editor (TextEdit / Notepad).
+Online version: on GitHub, open questions.json, click the pencil icon (Edit),
+make your change, then click "Commit changes". Render updates the site within
+a couple of minutes. Do this BEFORE the party: updating restarts the game and
+clears anyone who has joined.
+
+Laptop version: open questions.json in any text editor (TextEdit / Notepad).
 - "correct" is the position of the right answer, COUNTING FROM 0:
     0 = first option, 1 = second, 2 = third, 3 = fourth.
 - "secondsPerQuestion" sets the timer.

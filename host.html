@@ -27,6 +27,10 @@
   .chips { display: flex; flex-wrap: wrap; gap: 8px; max-height: 58vh; overflow: auto; align-content: flex-start; }
   .chip { background: var(--panel-strong); color: var(--ink); padding: 8px 14px; border-radius: 999px; font-weight: 800; font-size: clamp(14px, 1.3vw, 20px); animation: pop .35s both; }
   .chip:hover { background: var(--bad); }
+  .chip .prog { opacity: .75; font-size: .85em; margin-left: 4px; }
+  .chip.fin { background: rgba(47, 191, 113, .55); }
+  .night { background: var(--panel); border-radius: 14px; padding: 14px 18px; margin-bottom: 16px; font-weight: 800; font-size: clamp(15px, 1.5vw, 22px); line-height: 1.35; }
+  .night .muted { font-weight: 600; font-size: .85em; }
   .chip.armed { background: var(--bad); }
   .roster .empty { color: var(--muted); font-size: clamp(16px, 1.6vw, 24px); animation: pulse 2s infinite; }
 
@@ -118,6 +122,10 @@ let deadline = 0, openAt = 0;
 let menuOpen = false;
 let joinUrl = location.origin, online = false;
 let armedKick = null;
+let lastPhase = null, hostReset = false;
+
+// Keep the free online host awake while this screen is open (it sleeps after 15 quiet minutes).
+setInterval(() => fetch('/api/ping', { method: 'POST' }).catch(() => {}), 4 * 60 * 1000);
 
 fetch('/info').then(r => r.json()).then(i => { joinUrl = i.joinUrl; online = !!i.online; if (S && S.phase === 'lobby') { lastKey = ''; render(); } }).catch(() => {});
 
@@ -141,6 +149,7 @@ function gate() {
 }
 
 async function act(action, extra = {}) {
+  if (action === 'reset' || action === 'restart') hostReset = true;
   try {
     const r = await fetch('/api/host', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, key: KEY, ...extra }) });
     if (r.status === 403) gate();
@@ -148,6 +157,11 @@ async function act(action, extra = {}) {
 }
 
 function onState() {
+  // The online host restarted during all-night mode (it came back empty): switch all-night mode back on
+  // so phones can re-send their answers.
+  if (lastPhase === 'open' && S.phase === 'lobby' && !S.playerCount && !hostReset) act('resumeNight');
+  if (S.phase !== 'lobby') hostReset = false;
+  lastPhase = S.phase;
   const now = performance.now();
   if (S.phase === 'question') { deadline = now + S.remainingMs; openAt = now + S.openInMs; }
   const key = S.phase + ':' + S.qIndex;
@@ -163,7 +177,7 @@ function render() {
   const app = $('#app');
   const ph = S.phase;
   let html = '<div class="stage">';
-  if (ph === 'lobby') {
+  if (ph === 'lobby' || ph === 'open') {
     const t = String(S.title || '');
     const m = t.match(/\d+/);
     html += `<div class="lobby">
@@ -176,7 +190,8 @@ function render() {
           <div class="hint">${online ? 'Works on Wi-Fi or cell data. Pick a nickname to join.' : 'Be on the same Wi-Fi as this laptop, then pick a nickname.'}</div></div>
         </div>
       </div>
-      <div class="roster"><h2><span class="n" id="pc">0</span> players</h2><div class="chips" id="chips"></div></div>
+      <div class="roster">${ph === 'open' ? `<div class="night">🌙 All-night mode is open — guests play whenever they like.<br><span class="muted">Results stay hidden until you press <b>Reveal results</b>.</span></div>` : ''}
+        <h2><span class="n" id="pc">0</span> players${ph === 'open' ? ` · <span class="n" id="fin">0</span> finished` : ''}</h2><div class="chips" id="chips"></div></div>
     </div>`;
   } else if (ph === 'question' || ph === 'reveal') {
     html += topbar() + `<div class="qwrap">
@@ -190,17 +205,27 @@ function render() {
     html += `<div class="lbwrap final"><h1>🎉 Final Results 🎉</h1><div class="podium" id="podium"></div><ol class="board rest" id="board"></ol></div>`;
   }
   html += '</div>';
-  html += `<div class="controls"><button class="btn ghost" id="menuBtn" aria-label="More options">⋯</button><button class="btn" id="next"></button></div>
+  html += `<div class="controls"><button class="btn ghost" id="menuBtn" aria-label="More options">⋯</button>
+           ${ph === 'lobby' ? '<button class="btn ghost" id="night">🌙 All-night mode</button>' : ''}<button class="btn" id="next"></button></div>
            <div class="keyhint">Space = next</div>`;
   app.innerHTML = html;
-  $('#next').onclick = () => act('next');
+  $('#next').onclick = next;
+  if ($('#night')) $('#night').onclick = () => confirmBox('Open all-night mode?',
+    'Guests answer all ' + S.total + ' questions on their own phones, whenever they like during the party. Nobody sees scores or correct answers until you press "Reveal results".',
+    () => act('openNight'));
   $('#menuBtn').onclick = toggleMenu;
   if (ph === 'final') confetti();
   update();
 }
 
+function next() {
+  if (S.phase === 'open') return confirmBox('Reveal the results?', 'All-night mode closes and everyone sees the final leaderboard. Anyone who hasn\'t finished keeps the points they have so far.', () => act('next'));
+  act('next');
+}
+
 function nextLabel() {
   switch (S.phase) {
+    case 'open': return 'Reveal results 🏆';
     case 'lobby': return S.playerCount ? 'Start game ▶' : 'Waiting for players…';
     case 'question': return 'Show answer ▶';
     case 'reveal': return 'Leaderboard ▶';
@@ -212,14 +237,16 @@ function nextLabel() {
 function update() {
   const nb = $('#next');
   if (nb) { nb.textContent = nextLabel(); nb.disabled = S.phase === 'final' || (S.phase === 'lobby' && !S.playerCount); }
-  if (S.phase === 'lobby') {
+  if (S.phase === 'lobby' || S.phase === 'open') {
+    const night = S.phase === 'open';
     $('#pc').textContent = S.playerCount;
+    if (night) $('#fin').textContent = S.finished || 0;
     const chips = $('#chips');
-    const ids = S.players.map(p => p.id).join(',');
+    const ids = S.players.map(p => p.id + (night ? ':' + p.done : '')).join(',');
     if (chips.dataset.ids !== ids) {
       chips.dataset.ids = ids;
       chips.innerHTML = S.players.length ? S.players.slice().reverse().map(p =>
-        `<button class="chip" data-id="${esc(p.id)}" title="Click twice to remove">${esc(p.name)}</button>`).join('')
+        `<button class="chip${night && p.done >= S.total ? ' fin' : ''}" data-id="${esc(p.id)}" title="Click twice to remove">${esc(p.name)}${night ? ` <span class="prog">${p.done >= S.total ? '✓' : p.done + '/' + S.total}</span>` : ''}</button>`).join('')
         : '<div class="empty">Waiting for guests to join…</div>';
       chips.querySelectorAll('.chip').forEach(c => c.onclick = () => {
         if (armedKick === c.dataset.id) { act('kick', { id: c.dataset.id }); armedKick = null; }
@@ -354,7 +381,7 @@ function confetti() {
 
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || $('.dialog-backdrop')) return;
-  if (e.code === 'Space' || e.code === 'ArrowRight') { e.preventDefault(); const b = $('#next'); if (b && !b.disabled) act('next'); }
+  if (e.code === 'Space' || e.code === 'ArrowRight') { e.preventDefault(); const b = $('#next'); if (b && !b.disabled) next(); }
 });
 document.addEventListener('click', e => { if (menuOpen && !e.target.closest('.menu') && !e.target.closest('#menuBtn')) { menuOpen = false; const m = $('.menu'); if (m) m.remove(); } });
 

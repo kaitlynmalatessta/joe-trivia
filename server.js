@@ -30,13 +30,16 @@ QUESTIONS.forEach((q, i) => {
 });
 
 // ---------- game state ----------
-// phase: lobby | question | reveal | leaderboard | final
+// phase: lobby | question | reveal | leaderboard | final   (live game, host moves everyone together)
+//        open                                              (all-night mode: everyone plays at their own pace)
 let game = freshGame();
-const players = new Map();   // pid -> { name, score, streak, answers: { [qIndex]: {choice, points, correct} } }
+// pid -> { name, score, streak, answers: { [qIndex]: {choice, points, correct, ms} }, spQ, spAt }
+//   spQ = next question this player will see in all-night mode; spAt = when its timer started (0 = not started)
+const players = new Map();
 let revealTimer = null;
 
 function freshGame() {
-  return { phase: 'lobby', qIndex: -1, openAt: 0, endAt: 0 };
+  return { phase: 'lobby', mode: 'live', qIndex: -1, openAt: 0, endAt: 0 };
 }
 
 function loadSave() {
@@ -74,6 +77,26 @@ function ranked() {
   return list;
 }
 
+function award(p, correct, elapsedMs) {
+  let points = 0;
+  if (correct) {
+    const t = Math.min(1, Math.max(0, elapsedMs / LIMIT_MS));
+    p.streak += 1;
+    points = Math.round(1000 * (1 - t / 2)) + Math.min(500, 100 * (p.streak - 1));
+    p.score += points;
+  } else {
+    p.streak = 0;
+  }
+  return points;
+}
+
+function review(p) {
+  return QUESTIONS.map((Q, i) => {
+    const a = p.answers[i];
+    return { text: Q.question, options: Q.options, correct: Q.correct, choice: a ? a.choice : null, points: a ? a.points : 0 };
+  });
+}
+
 function answerCounts(q) {
   const counts = QUESTIONS[q].options.map(() => 0);
   for (const p of players.values()) {
@@ -97,11 +120,15 @@ function publicState(now) {
   const Q = QUESTIONS[q];
   const st = {
     title: QUIZ.title, subtitle: QUIZ.subtitle,
-    phase: game.phase, qIndex: q, total: QUESTIONS.length,
+    phase: game.phase, mode: game.mode || 'live', qIndex: q, total: QUESTIONS.length,
     playerCount: players.size,
     serverNow: now,
   };
-  if (Q && game.phase !== 'lobby') {
+  if (game.phase === 'open') {
+    st.limitMs = LIMIT_MS;
+    st.finished = [...players.values()].filter(p => (p.spQ || 0) >= QUESTIONS.length).length;
+  }
+  if (Q && game.phase !== 'lobby' && game.phase !== 'open') {
     st.question = { round: Q.round, text: Q.question, options: Q.options };
     st.limitMs = LIMIT_MS;
   }
@@ -129,7 +156,21 @@ function personal(st, pid, rankList) {
   const ahead = idx > 0 ? rankList[idx - 1] : null;
   const you = { name: p.name, score: p.score, streak: p.streak, rank: me.rank };
   if (ahead && ahead.score > p.score) you.behind = { name: ahead.name, gap: ahead.score - p.score };
-  const a = p.answers[game.qIndex];
+  if (game.phase === 'open') {
+    const q = p.spQ || 0;
+    const sp = { q, done: q >= QUESTIONS.length, started: !!p.spAt };
+    if (!sp.done) {
+      const Q = QUESTIONS[q];
+      sp.question = { round: Q.round, text: Q.question, options: Q.options };
+      if (p.spAt) sp.remainingMs = Math.max(0, p.spAt + LIMIT_MS - Date.now());
+    }
+    you.sp = sp;
+  }
+  if (game.phase === 'final') {
+    you.review = review(p);
+    you.right = Object.values(p.answers).filter(a => a.correct).length;
+  }
+  const a = game.phase === 'open' ? null : p.answers[game.qIndex];
   if (a) you.answer = { choice: a.choice, ...(game.phase !== 'question' ? { points: a.points, correct: a.correct } : {}) };
   return { ...st, you };
 }
@@ -139,8 +180,8 @@ function hostState(st) {
   return {
     ...st,
     host: true,
-    players: list.map(({ pid, name, score }) => ({ id: pid.slice(0, 8), name, score })),
-    correct: game.phase === 'question' || game.phase === 'reveal' ? QUESTIONS[game.qIndex].correct : st.correct,
+    players: list.map(({ pid, name, score }) => ({ id: pid.slice(0, 8), name, score, done: Math.min(players.get(pid).spQ || 0, QUESTIONS.length) })),
+    correct: (game.phase === 'question' || game.phase === 'reveal') ? QUESTIONS[game.qIndex].correct : st.correct,
     counts: game.qIndex >= 0 ? answerCounts(game.qIndex) : undefined,
   };
 }
@@ -191,7 +232,13 @@ function reveal() {
 
 function hostAction(action, body) {
   switch (action) {
+    case 'openNight':    // all-night mode: everyone plays at their own pace, results revealed later
+      if (game.phase !== 'lobby') return;
+      clearTimeout(revealTimer);
+      game = { phase: 'open', mode: 'selfpaced', qIndex: -1, openAt: 0, endAt: 0 };
+      save(); return broadcast();
     case 'next':
+      if (game.phase === 'open') { game.phase = 'final'; save(); return broadcast(); }
       if (game.phase === 'lobby') return startQuestion(0);
       if (game.phase === 'question') return reveal();
       if (game.phase === 'reveal') { game.phase = 'leaderboard'; save(); return broadcast(); }
@@ -204,7 +251,7 @@ function hostAction(action, body) {
       clearTimeout(revealTimer); game.phase = 'final'; save(); return broadcast();
     case 'restart':      // same players, scores back to zero
       clearTimeout(revealTimer);
-      for (const p of players.values()) { p.score = 0; p.streak = 0; p.answers = {}; }
+      for (const p of players.values()) { p.score = 0; p.streak = 0; p.answers = {}; p.spQ = 0; p.spAt = 0; }
       game = freshGame(); save(); return broadcast();
     case 'reset':        // everyone has to join again
       clearTimeout(revealTimer);
@@ -226,7 +273,7 @@ function join(body) {
   while (taken.has(final.toLowerCase())) final = `${name.slice(0, 13)} ${n++}`;
   const pid = crypto.randomBytes(12).toString('hex');
   // Late joiners simply score 0 on questions they missed.
-  players.set(pid, { name: final, score: 0, streak: 0, answers: {} });
+  players.set(pid, { name: final, score: 0, streak: 0, answers: {}, spQ: 0, spAt: 0 });
   save(); broadcast();
   return { status: 200, data: { pid, name: final } };
 }
@@ -234,6 +281,7 @@ function join(body) {
 function answer(body) {
   const p = players.get(body.pid);
   if (!p) return { status: 404, data: { error: 'not-joined' } };
+  if (game.phase === 'open') return answerNight(p, body);
   if (game.phase !== 'question') return { status: 409, data: { error: 'Too late!' } };
   const now = Date.now();
   if (now < game.openAt) return { status: 409, data: { error: 'Not open yet' } };
@@ -243,18 +291,68 @@ function answer(body) {
   const Q = QUESTIONS[q];
   if (!(Number.isInteger(choice) && choice >= 0 && choice < Q.options.length)) return { status: 400, data: { error: 'bad choice' } };
   const correct = choice === Q.correct;
-  let points = 0;
-  if (correct) {
-    const t = Math.min(1, Math.max(0, (now - game.openAt) / LIMIT_MS));
-    p.streak += 1;
-    points = Math.round(1000 * (1 - t / 2)) + Math.min(500, 100 * (p.streak - 1));
-    p.score += points;
-  }
+  const points = award(p, correct, now - game.openAt);
   p.answers[q] = { choice, points, correct };
   save();
   if (answeredCount(q) >= players.size) setTimeout(reveal, 800);  // everyone's in
   broadcast();
   return { status: 200, data: { ok: true } };
+}
+
+// ---------- all-night mode ----------
+const GRACE_MS = 2500;   // allowance for slow phone connections
+
+function startNight(body) {
+  const p = players.get(body.pid);
+  if (!p) return { status: 404, data: { error: 'not-joined' } };
+  if (game.phase !== 'open') return { status: 409, data: { error: 'not open' } };
+  if ((p.spQ || 0) < QUESTIONS.length && !p.spAt) { p.spAt = Date.now(); save(); broadcast(); }
+  return { status: 200, data: { ok: true } };
+}
+
+function answerNight(p, body) {
+  const q = p.spQ || 0;
+  if (q >= QUESTIONS.length) return { status: 200, data: { ok: true, done: true } };
+  if (Number(body.q) !== q) return { status: 200, data: { ok: true } };   // duplicate / stale tap
+  if (!p.spAt) return { status: 409, data: { error: 'not started' } };
+  const Q = QUESTIONS[q];
+  const elapsed = Date.now() - p.spAt;
+  let choice = Number(body.choice);
+  if (!(Number.isInteger(choice) && choice >= 0 && choice < Q.options.length) || elapsed > LIMIT_MS + GRACE_MS) choice = null;
+  const correct = choice !== null && choice === Q.correct;
+  const points = award(p, correct, Math.min(elapsed, LIMIT_MS));
+  p.answers[q] = { choice, points, correct, ms: Math.min(elapsed, LIMIT_MS) };
+  p.spQ = q + 1; p.spAt = 0;
+  save(); broadcast();
+  return { status: 200, data: { ok: true, done: p.spQ >= QUESTIONS.length } };
+}
+
+// If the online host restarts during all-night mode, phones re-send what they already answered.
+function restoreNight(body) {
+  if (game.phase !== 'open') return { status: 409, data: { error: 'not open' } };
+  const pid = String(body.pid || '');
+  if (!/^[a-f0-9]{24}$/.test(pid)) return { status: 400, data: { error: 'bad id' } };
+  if (players.has(pid)) return { status: 200, data: { ok: true } };
+  if (players.size >= MAX_PLAYERS) return { status: 403, data: { error: 'The game is full.' } };
+  let name = String(body.name || 'Player').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 16) || 'Player';
+  const taken = new Set([...players.values()].map(x => x.name.toLowerCase()));
+  let final = name, n = 2;
+  while (taken.has(final.toLowerCase())) final = `${name.slice(0, 13)} ${n++}`;
+  const p = { name: final, score: 0, streak: 0, answers: {}, spQ: 0, spAt: 0 };
+  const log = Array.isArray(body.log) ? body.log.slice(0, QUESTIONS.length) : [];
+  for (const e of log) {
+    const q = p.spQ;
+    if (Number(e.q) !== q) break;
+    const Q = QUESTIONS[q];
+    const choice = Number.isInteger(e.choice) && e.choice >= 0 && e.choice < Q.options.length ? e.choice : null;
+    const ms = Math.min(LIMIT_MS, Math.max(0, Number(e.ms) || LIMIT_MS));
+    const correct = choice !== null && choice === Q.correct;
+    p.answers[q] = { choice, points: award(p, correct, ms), correct, ms };
+    p.spQ = q + 1;
+  }
+  players.set(pid, p);
+  save(); broadcast();
+  return { status: 200, data: { ok: true, name: final } };
 }
 
 // ---------- helpers ----------
@@ -380,8 +478,15 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     if (p === '/api/join') { const r = join(body); return send(res, r.status, r.data); }
     if (p === '/api/answer') { const r = answer(body); return send(res, r.status, r.data); }
+    if (p === '/api/night/start') { const r = startNight(body); return send(res, r.status, r.data); }
+    if (p === '/api/night/restore') { const r = restoreNight(body); return send(res, r.status, r.data); }
+    if (p === '/api/ping') return send(res, 200, { ok: true });   // keeps the free online host awake
     if (p === '/api/host') {
       if (!hostAllowed(req, url, body)) return send(res, 403, { error: 'Wrong host code' });
+      if (body.action === 'resumeNight') {   // host page saw the server restart during all-night mode
+        if (game.phase === 'lobby' && players.size === 0) { game = { phase: 'open', mode: 'selfpaced', qIndex: -1, openAt: 0, endAt: 0 }; save(); broadcast(); }
+        return send(res, 200, { ok: true });
+      }
       hostAction(String(body.action), body);
       return send(res, 200, { ok: true });
     }

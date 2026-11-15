@@ -39,6 +39,14 @@
   .lb .board li, .board li { padding: 9px 14px; font-size: 16px; text-align: left; }
   .gap { color: var(--muted); font-weight: 700; font-size: 15px; }
   .conn { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); background: var(--bad); padding: 6px 14px; border-radius: 999px; font-weight: 800; font-size: 13px; z-index: 60; }
+  .review { width: 100%; text-align: left; margin-top: 12px; background: var(--panel); border-radius: 14px; padding: 12px 14px; }
+  .review summary { font-weight: 800; cursor: pointer; }
+  .review ol { margin: 10px 0 0; padding-left: 22px; display: grid; gap: 12px; }
+  .review .rq { font-weight: 700; }
+  .review .ra { font-weight: 800; margin-top: 3px; }
+  .review .ra.ok { color: #7ee2a8; } .review .ra.no { color: #ffb4b4; }
+  .review .ra span { color: var(--muted); font-weight: 700; }
+  .review .rc { color: var(--muted); font-weight: 700; }
   .place { font-size: 72px; font-weight: 900; color: var(--gold); line-height: 1; }
 </style>
 </head>
@@ -62,6 +70,13 @@ const store = {
 
 let pid = store.get('triviaPid') || '';
 let S = null, es = null, lastKey = '', deadline = 0, openAt = 0, picked = null, pickedFor = -2, joining = false;
+// all-night mode
+let nightBusy = false, nightTimedOut = -1, justAnswered = false, restoreTried = false;
+function nightLog() { try { const l = JSON.parse(store.get('triviaNight') || 'null'); return l && l.pid === pid ? l : { pid, log: [] }; } catch (_) { return { pid, log: [] }; } }
+function addNightLog(entry) { const l = nightLog(); if (!l.log.some(e => e.q === entry.q)) l.log.push(entry); store.set('triviaNight', JSON.stringify(l)); }
+
+// Keep the free online host awake while people are playing.
+setInterval(() => fetch('/api/ping', { method: 'POST' }).catch(() => {}), 4 * 60 * 1000);
 
 function connect() {
   if (es) es.close();
@@ -74,6 +89,13 @@ function onState() {
   const now = performance.now();
   if (S.phase === 'question') { deadline = now + S.remainingMs; openAt = now + S.openInMs; }
   if (!S.you) {                         // not joined (or host started a new game)
+    if (pid && S.phase === 'open' && !restoreTried) {   // server restarted during all-night mode: re-send my answers
+      restoreTried = true;
+      fetch('/api/night/restore', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pid, name: store.get('triviaName') || 'Player', log: nightLog().log }) })
+        .then(() => connect()).catch(() => {});
+      return;
+    }
     if (pid) { pid = ''; store.del('triviaPid'); connect(); }
     if (lastKey !== 'join') { lastKey = 'join'; renderJoin(); }
     return;
@@ -82,11 +104,21 @@ function onState() {
   if (S.you.answer && S.you.answer.choice !== null && S.you.answer.choice !== undefined) picked = S.you.answer.choice;
   const reading = S.phase === 'question' && now < openAt;
   const answered = S.phase === 'question' && picked !== null;
-  const key = [S.phase, S.qIndex, reading ? 'r' : '', answered ? 'a' : ''].join(':');
+  let key = [S.phase, S.qIndex, reading ? 'r' : '', answered ? 'a' : ''].join(':');
+  if (S.phase === 'open') {
+    const sp = S.you.sp;
+    if (sp.started) deadline = now + sp.remainingMs;
+    key = ['open', sp.q, sp.started ? 's' : '', sp.done ? 'd' : ''].join(':');
+  }
   if (key !== lastKey) { lastKey = key; render(); } else update();
 }
 
 function head() {
+  if (S.phase === 'open') {
+    const sp = S.you.sp;
+    const left = sp.done ? esc(S.title || '') : `Q${sp.q + 1} of ${S.total}`;
+    return `<div class="head"><span>${left}</span><span class="me">${esc(S.you.name)}</span></div>`;   // scores stay secret
+  }
   const left = S.question && S.phase !== 'final' ? `Q${S.qIndex + 1} of ${S.total}` : esc(S.title || '');
   return `<div class="head"><span>${left}</span><span class="me">${esc(S.you.name)} · ${S.you.score.toLocaleString()}</span></div>`;
 }
@@ -126,6 +158,8 @@ function render() {
     h += `<div class="center"><div class="badge good">✓</div><h1>You're in!</h1>
       <div class="sub">Look up at the big screen — the game starts soon.</div>
       <div class="card"><div class="row"><span>Players joined</span><b id="pc">${S.playerCount}</b></div></div></div>`;
+  } else if (ph === 'open') {
+    h += nightScreen();
   } else if (ph === 'question') {
     const reading = performance.now() < openAt;
     h += `<div class="q">${esc(S.question.text)}</div><div class="tbar"><i id="tb"></i></div>`;
@@ -158,12 +192,83 @@ function render() {
       <div class="sub">You finished</div><div class="place">${ordinal(y.rank)}</div>
       <div class="pts">${y.score.toLocaleString()} pts</div>
       <div class="lb"><ol class="board">${rows()}</ol></div>${youBelow()}
+      ${reviewList()}
       <div class="sub" style="margin-top:8px">Thanks for playing! 🎉</div></div>`;
     if (y.rank <= 3) setTimeout(confetti, 300);
   }
   h += '</div>';
   app.innerHTML = h;
-  app.querySelectorAll('.ans').forEach(b => b.onclick = () => choose(+b.dataset.i));
+  app.querySelectorAll('.ans').forEach(b => b.onclick = () => ph === 'open' ? nightAnswer(+b.dataset.i) : choose(+b.dataset.i));
+  const go = $('#go'); if (go) go.onclick = nightStart;
+}
+
+function nightScreen() {
+  const sp = S.you.sp;
+  if (sp.done) {
+    return `<div class="center"><div class="badge good">🎉</div><h1>All done!</h1>
+      <div class="sub">You answered all ${S.total} questions. Scores and answers stay secret until the big reveal later tonight.</div>
+      <div class="card"><div class="row"><span>Finished so far</span><b id="fin">${S.finished || 0} of ${S.playerCount}</b></div></div>
+      <div class="sub">Keep this page open, or come back to this same link for the results.</div></div>`;
+  }
+  if (!sp.started) {
+    if (sp.q === 0) {
+      return `<div class="center"><div class="badge wait" style="animation:none">🌙</div><h1>All-night trivia</h1>
+        <div class="card" style="text-align:left;line-height:1.5">
+          ${S.total} questions · ${Math.round(S.limitMs / 1000)} seconds each<br>
+          Faster right answers score more.<br>
+          Take breaks between questions whenever you like.<br>
+          Answers and scores stay secret until the big reveal!</div>
+        <button class="btn" id="go">Start question 1 ▶</button></div>`;
+    }
+    return `<div class="center">${justAnswered ? '<div class="badge good">✓</div><h2>Answer saved</h2>' : '<div class="badge wait" style="animation:none">⏸</div><h2>Welcome back!</h2>'}
+      <div class="sub">${sp.q} of ${S.total} done. The clock only starts when you tap the button.</div>
+      <button class="btn" id="go">Question ${sp.q + 1} ▶</button>
+      <div class="sub" style="font-size:14px">Need a break? Close this page and come back to the same link later.</div></div>`;
+  }
+  const Q = sp.question;
+  if (nightBusy) {
+    return `<div class="q">${esc(Q.text)}</div><div class="center"><div class="badge wait">🔒</div><h2>Saving…</h2></div>`;
+  }
+  return `<div class="sub" style="text-align:center;margin-top:8px;font-size:13px">${esc(Q.round || '')}</div>
+    <div class="q">${esc(Q.text)}</div><div class="tbar"><i id="tb"></i></div>
+    <div class="answers" style="--n:${Q.options.length}">` +
+    Q.options.map((o, i) => `<button class="ans c${i}" data-i="${i}">${SHAPES[i]}<span>${esc(o)}</span></button>`).join('') + '</div>';
+}
+
+async function nightStart() {
+  const b = $('#go'); if (b) b.disabled = true;
+  justAnswered = false;
+  try { await fetch('/api/night/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid }) }); }
+  catch (_) { if (b) b.disabled = false; }
+}
+
+async function nightAnswer(choice) {
+  if (nightBusy || !S.you || !S.you.sp || !S.you.sp.started) return;
+  const q = S.you.sp.q;
+  const ms = Math.max(0, Math.round(S.limitMs - Math.max(0, deadline - performance.now())));
+  nightBusy = true;
+  if (navigator.vibrate) try { navigator.vibrate(30); } catch (_) {}
+  lastKey = ''; render();
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const r = await fetch('/api/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid, q, choice }) });
+      if (r.ok) { addNightLog({ q, choice: choice >= 0 ? choice : null, ms }); justAnswered = true; break; }
+      if (r.status === 404) break;
+    } catch (_) { await new Promise(res => setTimeout(res, 600)); }
+  }
+  nightBusy = false;
+  lastKey = ''; if (S) onState();
+}
+
+function reviewList() {
+  const rv = S.you.review; if (!rv) return '';
+  return `<details class="review"><summary>See the answers · you got ${S.you.right} of ${rv.length} right</summary><ol>` +
+    rv.map(r => {
+      const ok = r.choice === r.correct;
+      return `<li><div class="rq">${esc(r.text)}</div>
+        <div class="ra ${ok ? 'ok' : 'no'}">${ok ? '✓' : '✗'} ${r.choice === null || r.choice === undefined ? 'No answer' : esc(r.options[r.choice])}${ok ? ` <span>+${r.points}</span>` : ''}</div>
+        ${ok ? '' : `<div class="rc">Answer: ${esc(r.options[r.correct])}</div>`}</li>`;
+    }).join('') + '</ol></details>';
 }
 
 function standing() {
@@ -183,6 +288,7 @@ function ordinal(n) { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n 
 
 function update() {
   const pc = $('#pc'); if (pc) pc.textContent = S.playerCount;
+  const fin = $('#fin'); if (fin && S.phase === 'open') fin.textContent = `${S.finished || 0} of ${S.playerCount}`;
 }
 
 async function choose(i) {
@@ -202,6 +308,11 @@ async function choose(i) {
 }
 
 function tick() {
+  if (S && S.you && S.phase === 'open' && S.you.sp && S.you.sp.started && !nightBusy) {
+    const left = deadline - performance.now();
+    const tb = $('#tb'); if (tb) tb.style.transform = `scaleX(${Math.max(0, left / S.limitMs)})`;
+    if (left <= 0 && nightTimedOut !== S.you.sp.q) { nightTimedOut = S.you.sp.q; nightAnswer(-1); }
+  }
   if (S && S.you && S.phase === 'question') {
     const now = performance.now();
     if (now >= openAt && lastKey.split(':')[2] === 'r') onState();
